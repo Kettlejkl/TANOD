@@ -1,0 +1,58 @@
+# =======================
+# Python / Flask (backend)
+# =======================
+backend/__pycache__/
+backend/venv/
+backend/env/
+backend/*.sqlite3
+backend/.env
+backend/instance/
+backend/*.log
+backend/*.egg-info/
+backend/*.pyc
+backend/*.pyo
+backend/__pycache__/
+
+# =======================
+# Node / React (frontend)
+# =======================
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/npm-debug.log
+frontend/yarn-error.log
+frontend/env/
+
+# =======================
+# Yolov8 / ML models
+# =======================
+**/venv/
+**/env/
+**/weights/
+*.pt
+*.pth
+*.onnx
+*.zip
+*.tar
+*.tar.gz
+*.h5
+*.pkl
+*.pyd
+
+# =======================
+# OS / IDE / Editor
+# =======================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# =======================
+# Misc large files
+# =======================
+*.bin
+*.lib
+*.exe
+*.dll
+*.so

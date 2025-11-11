@@ -1,0 +1,24 @@
+behavior_id,persistent_id,camera_id,behavior_type,severity,confidence,description,timestamp
+57,3,CAM001,loitering,medium,0.95,Person loitering for 652.0s (moved only 13px),2025-11-09 20:22:30.763479
+56,3,CAM001,loitering,medium,0.95,Person loitering for 621.8s (moved only 136px),2025-11-09 20:22:00.546264
+55,3,CAM001,loitering,medium,0.95,Person loitering for 513.1s (moved only 134px),2025-11-09 20:20:11.879980
+54,3,CAM001,loitering,medium,0.95,Person loitering for 308.6s (moved only 68px),2025-11-09 20:16:47.384881
+53,3,CAM001,loitering,medium,0.95,Person loitering for 251.5s (moved only 111px),2025-11-09 20:15:50.332857
+52,3,CAM001,loitering,medium,0.95,Person loitering for 221.3s (moved only 138px),2025-11-09 20:15:20.107403
+51,3,CAM001,loitering,medium,0.95,Person loitering for 146.7s (moved only 122px),2025-11-09 20:14:05.473568
+50,3,CAM001,loitering,medium,0.95,Person loitering for 238.2s (moved only 39px),2025-11-09 20:08:36.892487
+49,3,CAM001,loitering,medium,0.95,Person loitering for 206.8s (moved only 39px),2025-11-09 20:08:05.571158
+48,3,CAM001,loitering,medium,0.95,Person loitering for 175.5s (moved only 17px),2025-11-09 20:07:34.199332
+47,3,CAM001,loitering,medium,0.95,Person loitering for 143.9s (moved only 16px),2025-11-09 20:07:02.593206
+46,3,CAM001,loitering,medium,0.95,Person loitering for 113.6s (moved only 52px),2025-11-09 20:06:32.303874
+45,3,CAM001,loitering,medium,0.95,Person loitering for 83.3s (moved only 52px),2025-11-09 20:06:02.039011
+44,3,CAM001,loitering,medium,0.95,Person loitering for 53.2s (moved only 52px),2025-11-09 20:05:31.993027
+43,1,CAM001,loitering,medium,0.95,Person loitering for 60.0s (moved only 28px),2025-11-09 18:38:52.568955
+42,1,CAM001,loitering,medium,0.95,Person loitering for 317.7s (moved only 18px),2025-11-09 18:36:25.265275
+41,1,CAM001,loitering,medium,0.95,Person loitering for 287.4s (moved only 18px),2025-11-09 18:35:54.955886
+40,1,CAM001,loitering,medium,0.95,Person loitering for 257.3s (moved only 18px),2025-11-09 18:35:24.872137
+39,1,CAM001,loitering,medium,0.95,Person loitering for 227.3s (moved only 8px),2025-11-09 18:34:54.836301
+38,1,CAM001,loitering,medium,0.95,Person loitering for 197.1s (moved only 8px),2025-11-09 18:34:24.649905
+37,1,CAM001,loitering,medium,0.95,Person loitering for 166.8s (moved only 11px),2025-11-09 18:33:54.401834
+36,1,CAM001,loitering,medium,0.95,Person loitering for 136.7s (moved only 72px),2025-11-09 18:33:24.254271
+35,1,CAM001,loitering,medium,0.95,Person loitering for 106.5s (moved only 128px),2025-11-09 18:32:54.076311

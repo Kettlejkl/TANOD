@@ -1,0 +1,4 @@
+persistent_id,cameras_visited,track_id,avg_confidence,percent_time_in_fence,fence_ids_visited,fence_names_visited,total_detections,first_seen,last_seen,duration_seconds
+1,CAM001,43,0.823,100.0,d45e575b-2481-461f-bb7a-4487ee713018,Eastbound,50,2025-11-09T19:00:23.630144,2025-11-09T19:03:25.343897,181.713753
+2,CAM001,26,0.823,100.0,d45e575b-2481-461f-bb7a-4487ee713018,Eastbound,2,2025-11-09T19:02:00.723233,2025-11-09T19:02:01.874578,1.151345
+3,CAM001,27,0.8,100.0,d45e575b-2481-461f-bb7a-4487ee713018,Eastbound,1,2025-11-09T19:02:07.008970,2025-11-09T19:02:07.008970,0.0

@@ -1,0 +1,2 @@
+persistent_id,cameras,behavior_types,max_severity,avg_confidence,first_behavior,last_behavior,total_behaviors,running_count
+7,CAM001,running,high,0.86,2025-11-07T08:59:22.664760,2025-11-07T08:59:22.664760,1,1

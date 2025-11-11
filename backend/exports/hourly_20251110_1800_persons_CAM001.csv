@@ -1,0 +1,2 @@
+persistent_id,cameras_visited,track_id,avg_confidence,percent_time_in_fence,fence_ids_visited,fence_names_visited,total_detections,first_seen,last_seen,duration_seconds
+1,CAM001,12,0.82,100.0,99111bba-74e8-4d76-9c2c-227990dda407,Zone 1,1,2025-11-10T18:13:15.109283,2025-11-10T18:13:15.109283,0.0
