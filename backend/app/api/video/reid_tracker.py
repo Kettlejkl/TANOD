@@ -1,15 +1,10 @@
-"""
-Reduce duplication or improvement in UID persistence 
-
-"""
-
-
 import time
 import numpy as np
 from scipy.spatial.distance import cosine
 import torch
 import torchreid
 from collections import deque
+import cv2
 
 
 class PersistentPersonTracker:
@@ -17,8 +12,8 @@ class PersistentPersonTracker:
     def __init__(
         self,
         db_handler=None,
-        similarity_threshold=0.70,
-        cross_camera_threshold=0.75,
+        similarity_threshold=0.65,
+        cross_camera_threshold=0.70,
         min_box_area=5000,
         model_name='osnet_x1_0',
         use_gpu=True,
@@ -46,6 +41,10 @@ class PersistentPersonTracker:
         velocity_weight=0.15,
         bbox_overlap_penalty=0.25,
         assignment_lock_duration=1.0,
+        color_weight=0.20,
+        color_bins=16,
+        color_similarity_threshold=0.75,
+        color_update_rate=0.3,
     ):
         self.db = db_handler
         self.db_feature_limit = db_feature_limit
@@ -112,6 +111,14 @@ class PersistentPersonTracker:
         self.assignment_locks = {}
         self.last_assignments = {}
         
+        self.color_weight = color_weight
+        self.color_bins = color_bins
+        self.color_similarity_threshold = color_similarity_threshold
+        self.color_update_rate = color_update_rate
+        
+        self.color_histograms = {}
+        self.color_confidence = {}
+        
         self.device = torch.device('cuda' if use_gpu and torch.cuda.is_available() else 'cpu')
         print(f"[ReID] Loading TorchREID model: {model_name} on {self.device}")
         
@@ -171,6 +178,97 @@ class PersistentPersonTracker:
         print(f"  - Min feature separation: {self.min_feature_separation}")
         print(f"  - Motion history length: {self.motion_history_length}")
         print(f"  - Velocity weight: {self.velocity_weight}")
+        print(f"[ReID] 🎨 Clothing color analysis:")
+        print(f"  - Color weight: {self.color_weight}")
+        print(f"  - Color bins: {self.color_bins}")
+        print(f"  - Color threshold: {self.color_similarity_threshold}")
+        print(f"  - Color update rate: {self.color_update_rate}")
+
+    def _extract_color_histogram(self, image_crop):
+        if image_crop is None or image_crop.size == 0:
+            return None
+        
+        try:
+            if len(image_crop.shape) != 3 or image_crop.shape[2] != 3:
+                return None
+            
+            if image_crop.dtype != np.uint8:
+                image_crop = np.clip(image_crop, 0, 255).astype(np.uint8)
+            
+            height, width = image_crop.shape[:2]
+            
+            upper_body = image_crop[:int(height*0.6), :]
+            lower_body = image_crop[int(height*0.4):, :]
+            
+            hsv_upper = cv2.cvtColor(upper_body, cv2.COLOR_BGR2HSV)
+            hsv_lower = cv2.cvtColor(lower_body, cv2.COLOR_BGR2HSV)
+            
+            mask_upper = cv2.inRange(hsv_upper, np.array([0, 30, 30]), np.array([180, 255, 255]))
+            mask_lower = cv2.inRange(hsv_lower, np.array([0, 30, 30]), np.array([180, 255, 255]))
+            
+            hist_upper_h = cv2.calcHist([hsv_upper], [0], mask_upper, [self.color_bins], [0, 180])
+            hist_upper_s = cv2.calcHist([hsv_upper], [1], mask_upper, [self.color_bins], [0, 256])
+            
+            hist_lower_h = cv2.calcHist([hsv_lower], [0], mask_lower, [self.color_bins], [0, 180])
+            hist_lower_s = cv2.calcHist([hsv_lower], [1], mask_lower, [self.color_bins], [0, 256])
+            
+            hist_upper_h = cv2.normalize(hist_upper_h, hist_upper_h).flatten()
+            hist_upper_s = cv2.normalize(hist_upper_s, hist_upper_s).flatten()
+            hist_lower_h = cv2.normalize(hist_lower_h, hist_lower_h).flatten()
+            hist_lower_s = cv2.normalize(hist_lower_s, hist_lower_s).flatten()
+            
+            color_signature = {
+                'upper_hue': hist_upper_h,
+                'upper_sat': hist_upper_s,
+                'lower_hue': hist_lower_h,
+                'lower_sat': hist_lower_s,
+            }
+            
+            return color_signature
+            
+        except Exception as e:
+            print(f"[ReID] ⚠️ Color extraction failed: {e}")
+            return None
+
+    def _calculate_color_similarity(self, color1, color2):
+        if color1 is None or color2 is None:
+            return 0.0
+        
+        try:
+            sim_upper_h = cv2.compareHist(color1['upper_hue'], color2['upper_hue'], cv2.HISTCMP_CORREL)
+            sim_upper_s = cv2.compareHist(color1['upper_sat'], color2['upper_sat'], cv2.HISTCMP_CORREL)
+            sim_lower_h = cv2.compareHist(color1['lower_hue'], color2['lower_hue'], cv2.HISTCMP_CORREL)
+            sim_lower_s = cv2.compareHist(color1['lower_sat'], color2['lower_sat'], cv2.HISTCMP_CORREL)
+            
+            upper_score = 0.6 * sim_upper_h + 0.4 * sim_upper_s
+            lower_score = 0.6 * sim_lower_h + 0.4 * sim_lower_s
+            
+            combined_score = 0.6 * upper_score + 0.4 * lower_score
+            
+            combined_score = max(0.0, min(1.0, combined_score))
+            
+            return combined_score
+            
+        except Exception as e:
+            print(f"[ReID] ⚠️ Color comparison failed: {e}")
+            return 0.0
+
+    def _update_color_histogram(self, pid, new_color):
+        if new_color is None:
+            return
+        
+        if pid not in self.color_histograms:
+            self.color_histograms[pid] = new_color
+            self.color_confidence[pid] = 1.0
+        else:
+            old_color = self.color_histograms[pid]
+            
+            for key in ['upper_hue', 'upper_sat', 'lower_hue', 'lower_sat']:
+                old_color[key] = (1 - self.color_update_rate) * old_color[key] + \
+                                 self.color_update_rate * new_color[key]
+            
+            self.color_histograms[pid] = old_color
+            self.color_confidence[pid] = min(1.0, self.color_confidence[pid] + 0.1)
 
     def _load_features_from_db(self):
         try:
@@ -605,610 +703,303 @@ class PersistentPersonTracker:
             if new_feature is not None and existing_feat is not None:
                 feature_sim = self._calculate_similarity(new_feature, existing_feat)
                 
-                if feature_sim < (self.similarity_threshold - self.min_feature_distance):
-                    reason = (f"PID {pid} feature mismatch "
-                             f"(similarity: {feature_sim:.2f}, expected > {self.similarity_threshold:.2f})")
+                if feature_sim < self.min_feature_distance:
+                    reason = (f"PID {pid} features too similar "
+                             f"(similarity: {feature_sim:.2f})")
                     return True, reason
         
         return False, None
 
-    def _record_assignment(self, camera_id, pid, feature, bbox):
+    def _record_assignment(self, camera_id, pid, feature, bbox, timestamp=None):
+        if timestamp is None:
+            timestamp = time.time()
+        
         if camera_id not in self.recent_assignments:
             self.recent_assignments[camera_id] = []
         
-        current_time = time.time()
-        self.recent_assignments[camera_id].append((pid, feature, bbox, current_time))
+        self.recent_assignments[camera_id].append((pid, feature, bbox, timestamp))
         
-        self.recent_assignments[camera_id] = [
-            (p, f, b, t) for p, f, b, t in self.recent_assignments[camera_id]
-            if current_time - t < self.simultaneous_detection_window
-        ]
+        if camera_id not in self.last_assignments:
+            self.last_assignments[camera_id] = {}
+        
+        self.last_assignments[camera_id][pid] = (bbox, feature, timestamp)
 
-    def process_frame_batch(self, camera_id, detections):
-        current_time = time.time()
+    def process_detections(self, camera_id, detections, frame, timestamp=None):
+        if timestamp is None:
+            timestamp = time.time()
+        
         results = []
+        current_time = timestamp
         
         frame_state = {}
-        new_detections = []
         
-        for track_id, bbox, feature, in_geo_fence in detections:
-            track_key = (camera_id, track_id)
+        for detection in detections:
+            bbox = detection.get('bbox')
+            track_id = detection.get('track_id')
             
-            if track_key in self.track_to_persistent:
-                pid = self.track_to_persistent[track_key]
-                frame_state[pid] = (bbox, feature if feature is not None else self.persistent_ids.get(pid))
-            else:
-                new_detections.append((track_id, bbox, feature, in_geo_fence))
-        
-        if len(frame_state) > 1:
-            self._detect_crossing_batch(camera_id, frame_state)
-        
-        for track_id, bbox, feature, in_geo_fence in detections:
-            track_key = (camera_id, track_id)
+            if not self._is_valid_detection(bbox):
+                continue
             
-            if track_key in self.track_to_persistent:
-                pid = self.track_to_persistent[track_key]
+            x, y, w, h = bbox
+            image_crop = frame[int(y):int(y+h), int(x):int(x+w)]
+            
+            feature = self.extract_feature(image_crop)
+            
+            if feature is None:
+                if track_id not in self.feature_extraction_failures:
+                    self.feature_extraction_failures[track_id] = 0
+                self.feature_extraction_failures[track_id] += 1
                 
-                if feature is not None:
-                    self._add_feature_to_history(pid, feature)
-                    self.last_successful_feature[track_key] = (feature, current_time)
-                    self.feature_extraction_failures[track_key] = 0
-                    self._record_assignment(camera_id, pid, feature, bbox)
+                if track_id in self.last_successful_feature:
+                    feature = self.last_successful_feature[track_id]
                 else:
-                    self.feature_extraction_failures[track_key] = \
-                        self.feature_extraction_failures.get(track_key, 0) + 1
+                    continue
+            else:
+                self.feature_extraction_failures[track_id] = 0
+                self.last_successful_feature[track_id] = feature
+            
+            color_signature = self._extract_color_histogram(image_crop)
+            
+            persistent_id = None
+            match_confidence = 0.0
+            match_method = "new"
+            match_details = {}
+            
+            best_match_pid = None
+            best_match_score = 0.0
+            best_match_details = {}
+            
+            for pid, pid_features in self.feature_history.items():
+                feature_similarities = [
+                    self._calculate_similarity(feature, pid_feat) 
+                    for pid_feat in pid_features
+                ]
+                avg_feature_sim = np.mean(feature_similarities)
+                max_feature_sim = max(feature_similarities)
                 
-                self.last_seen[pid] = current_time
-                self.camera_locations[pid] = camera_id
+                color_sim = 0.0
+                if color_signature and pid in self.color_histograms:
+                    color_sim = self._calculate_color_similarity(
+                        color_signature, 
+                        self.color_histograms[pid]
+                    )
                 
-                if bbox is not None:
-                    self.spatial_context[pid] = bbox
-                    self._update_motion_history(pid, bbox, current_time)
+                if pid in self.color_histograms and color_signature:
+                    combined_score = (1.0 - self.color_weight) * avg_feature_sim + \
+                                   self.color_weight * color_sim
+                else:
+                    combined_score = avg_feature_sim
                 
-                if pid not in self.camera_history:
-                    self.camera_history[pid] = set()
-                self.camera_history[pid].add(camera_id)
+                if pid in self.camera_locations and \
+                   self.camera_locations[pid] == camera_id and \
+                   pid in self.spatial_context:
+                    
+                    last_bbox = self.spatial_context[pid]['bbox']
+                    last_time = self.spatial_context[pid]['timestamp']
+                    time_diff = current_time - last_time
+                    
+                    if time_diff < self.spatial_time_window:
+                        spatial_distance = self._calculate_spatial_distance(bbox, last_bbox)
+                        
+                        if spatial_distance < self.spatial_proximity_threshold:
+                            spatial_bonus = self.spatial_proximity_bonus * \
+                                          (1.0 - spatial_distance / self.spatial_proximity_threshold)
+                            combined_score += spatial_bonus
                 
-                if in_geo_fence and pid not in self.geo_fence_entry:
-                    self.geo_fence_entry[pid] = current_time
+                has_conflict, conflict_reason, conflict_penalty = \
+                    self._check_assignment_conflicts(camera_id, pid, bbox, feature)
                 
-                if camera_id not in self.active_uids_per_camera:
-                    self.active_uids_per_camera[camera_id] = set()
-                self.active_uids_per_camera[camera_id].add(pid)
+                if has_conflict:
+                    combined_score *= (1.0 - conflict_penalty)
+                    print(f"[ReID] ⚠️ Assignment conflict: {conflict_reason}")
                 
-                results.append((track_id, pid))
-        
-        for track_id, bbox, feature, in_geo_fence in new_detections:
-            pid = self.get_or_create_persistent_id(
-                camera_id, track_id, feature, bbox, in_geo_fence
+                combined_score = self._apply_crossing_penalties(
+                    camera_id, pid, combined_score, bbox
+                )
+                
+                if combined_score > best_match_score:
+                    best_match_score = combined_score
+                    best_match_pid = pid
+                    best_match_details = {
+                        'feature_sim': avg_feature_sim,
+                        'max_feature_sim': max_feature_sim,
+                        'color_sim': color_sim,
+                        'combined_score': combined_score,
+                        'has_conflict': has_conflict
+                    }
+            
+            threshold = self.cross_camera_threshold if \
+                       best_match_pid and \
+                       self.camera_locations.get(best_match_pid) != camera_id else \
+                       self.similarity_threshold
+            
+            is_duplicate, duplicate_reason = self._check_duplicate_assignment(
+                camera_id, best_match_pid, feature, bbox
             )
             
-            if pid is not None:
-                frame_state[pid] = (bbox, feature)
-                results.append((track_id, pid))
+            if is_duplicate:
+                print(f"[ReID] 🚫 Duplicate assignment blocked: {duplicate_reason}")
+                best_match_score = 0.0
+                best_match_pid = None
+            
+            if best_match_score >= threshold and best_match_pid is not None:
+                persistent_id = best_match_pid
+                match_confidence = best_match_score
+                match_method = "matched"
+                match_details = best_match_details
+                
+                self._add_feature_to_history(persistent_id, feature)
+                self._update_color_histogram(persistent_id, color_signature)
+                
+            else:
+                persistent_id = self.next_persistent_id
+                self.next_persistent_id += 1
+                match_confidence = 1.0
+                match_method = "new"
+                
+                self.feature_history[persistent_id] = [self._normalize_feature(feature)]
+                self.persistent_ids[persistent_id] = self._normalize_feature(feature)
+                
+                if color_signature:
+                    self.color_histograms[persistent_id] = color_signature
+                    self.color_confidence[persistent_id] = 1.0
+                
+                print(f"[ReID] 🆕 New UID: {persistent_id} (camera: {camera_id})")
+            
+            self.last_seen[persistent_id] = current_time
+            self.camera_locations[persistent_id] = camera_id
+            
+            self.spatial_context[persistent_id] = {
+                'bbox': bbox,
+                'timestamp': current_time,
+                'feature': feature
+            }
+            
+            self._update_motion_history(persistent_id, bbox, current_time)
+            self._record_assignment(camera_id, persistent_id, feature, bbox, current_time)
+            
+            if persistent_id not in self.camera_history:
+                self.camera_history[persistent_id] = []
+            if not self.camera_history[persistent_id] or \
+               self.camera_history[persistent_id][-1][0] != camera_id:
+                self.camera_history[persistent_id].append((camera_id, current_time))
+            
+            if persistent_id not in self.first_seen:
+                self.first_seen[persistent_id] = current_time
+            
+            frame_state[persistent_id] = (bbox, feature)
+            
+            if self.db and match_method == "new":
+                self._save_feature_to_db(persistent_id, camera_id, feature, match_confidence)
+            
+            result = {
+                'detection': detection,
+                'persistent_id': persistent_id,
+                'track_id': track_id,
+                'confidence': match_confidence,
+                'method': match_method,
+                'bbox': bbox,
+                'camera_id': camera_id,
+                'timestamp': current_time
+            }
+            
+            if match_details:
+                result['match_details'] = match_details
+            
+            results.append(result)
+        
+        if frame_state:
+            crossing_pairs = self._detect_crossing_batch(camera_id, frame_state)
+            if crossing_pairs:
+                for result in results:
+                    pid = result['persistent_id']
+                    if self._is_crossing_active(camera_id, pid):
+                        result['crossing_active'] = True
+        
+        active_pids = [r['persistent_id'] for r in results]
+        self.active_uids_per_camera[camera_id] = set(active_pids)
         
         return results
 
-    def find_best_match(self, camera_id, feature, bbox=None, track_id=None):
-        if feature is None:
-            return None, 0.0
-            
-        if bbox is not None and not self._is_valid_detection(bbox):
-            return None, 0.0
-
-        feature_np = self._normalize_feature(feature)
-        current_time = time.time()
-        
-        candidates = []
-
-        for pid, features_list in self.feature_history.items():
-            if not features_list:
-                continue
-            
-            similarities = [self._calculate_similarity(feature_np, f) for f in features_list]
-            max_similarity = max(similarities)
-            avg_similarity = np.mean(similarities)
-            base_similarity = 0.7 * max_similarity + 0.3 * avg_similarity
-            
-            motion_score = 0.5
-            motion_bonus = 0.0
-            if bbox is not None:
-                motion_score = self._calculate_motion_consistency(pid, bbox, current_time)
-                motion_bonus = self.velocity_weight * motion_score
-            
-            is_same_camera = (pid in self.camera_locations and 
-                             self.camera_locations[pid] == camera_id)
-            
-            spatial_bonus = 0.0
-            if is_same_camera and bbox is not None and pid in self.spatial_context:
-                time_elapsed = current_time - self.last_seen.get(pid, current_time)
-                
-                if time_elapsed < self.spatial_time_window:
-                    distance = self._calculate_spatial_distance(bbox, self.spatial_context[pid])
-                    
-                    if distance < self.spatial_proximity_threshold:
-                        spatial_factor = 1 - (distance / self.spatial_proximity_threshold)
-                        spatial_bonus = self.spatial_proximity_bonus * spatial_factor
-                        
-                        if distance < 30:
-                            spatial_bonus += 0.05
-                        
-                        print(f"[ReID] 📍 Spatial bonus: PID {pid} "
-                              f"(dist: {distance:.0f}px, bonus: +{spatial_bonus*100:.1f}%)")
-            
-            combined_score = base_similarity + motion_bonus + spatial_bonus
-            
-            if bbox is not None:
-                combined_score = self._apply_crossing_penalties(camera_id, pid, combined_score, bbox)
-            
-            if bbox is not None:
-                is_conflict, reason, penalty = self._check_assignment_conflicts(
-                    camera_id, pid, bbox, feature_np
-                )
-                
-                if is_conflict:
-                    print(f"[ReID] ❌ Conflict: {reason}")
-                    continue
-                
-                combined_score -= penalty
-            
-            if bbox is not None:
-                is_duplicate, reason = self._check_duplicate_assignment(
-                    camera_id, pid, feature_np, bbox
-                )
-                
-                if is_duplicate:
-                    print(f"[ReID] ⚠️ DUPLICATE PREVENTED: {reason}")
-                    continue
-            
-            threshold = self.similarity_threshold if is_same_camera else self.cross_camera_threshold
-            
-            if combined_score >= threshold:
-                candidates.append((pid, combined_score, is_same_camera, motion_score))
-        
-        if not candidates:
-            return None, 0.0
-        
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        best_pid, best_score, is_same_cam, motion = candidates[0]
-        
-        if track_id is not None:
-            track_key = (camera_id, track_id)
-            
-            if track_key not in self.recent_candidates:
-                self.recent_candidates[track_key] = []
-            
-            self.recent_candidates[track_key].append({
-                'pid': best_pid,
-                'score': best_score,
-                'time': current_time
-            })
-            
-            self.recent_candidates[track_key] = [
-                c for c in self.recent_candidates[track_key]
-                if current_time - c['time'] < self.temporal_smoothing_window
-            ]
-            
-            if len(self.recent_candidates[track_key]) >= self.min_votes_for_smoothing:
-                pid_votes = {}
-                for candidate in self.recent_candidates[track_key]:
-                    pid = candidate['pid']
-                    pid_votes[pid] = pid_votes.get(pid, 0) + candidate['score']
-                
-                voted_pid = max(pid_votes, key=pid_votes.get)
-                voted_score = pid_votes[voted_pid] / len(self.recent_candidates[track_key])
-                
-                if voted_pid != best_pid:
-                    if bbox is not None:
-                        is_dup, _ = self._check_duplicate_assignment(
-                            camera_id, voted_pid, feature_np, bbox
-                        )
-                        
-                        if not is_dup:
-                            print(f"[ReID] 🗳️ Smoothing: {best_pid} -> {voted_pid}")
-                            best_pid = voted_pid
-                            best_score = voted_score
-        
-        if bbox is not None:
-            self._update_motion_history(best_pid, bbox, current_time)
-        
-        if bbox is not None:
-            if camera_id not in self.last_assignments:
-                self.last_assignments[camera_id] = {}
-            
-            self.last_assignments[camera_id][best_pid] = (bbox, feature_np, current_time)
-            
-            expired = [
-                pid for pid, (_, _, ts) in self.last_assignments[camera_id].items()
-                if current_time - ts > 2.0
-            ]
-            for pid in expired:
-                del self.last_assignments[camera_id][pid]
-        
-        match_type = "same-cam" if is_same_cam else "cross-cam"
-        print(f"[ReID] ✓ Match: PID {best_pid} ({match_type}, "
-              f"score: {best_score:.3f}, motion: {motion:.2f})")
-        
-        return best_pid, best_score
-
-    def get_or_create_persistent_id(self, camera_id, track_id, feature, bbox=None, in_geo_fence=False):
-        if bbox is not None and not self._is_valid_detection(bbox):
+    def get_person_info(self, persistent_id):
+        if persistent_id not in self.persistent_ids:
             return None
+        
+        info = {
+            'persistent_id': persistent_id,
+            'first_seen': self.first_seen.get(persistent_id),
+            'last_seen': self.last_seen.get(persistent_id),
+            'current_camera': self.camera_locations.get(persistent_id),
+            'camera_history': self.camera_history.get(persistent_id, []),
+            'feature_count': len(self.feature_history.get(persistent_id, [])),
+            'has_color_profile': persistent_id in self.color_histograms,
+            'color_confidence': self.color_confidence.get(persistent_id, 0.0)
+        }
+        
+        return info
 
-        track_key = (camera_id, track_id)
+    def cleanup_old_tracks(self, max_age=300.0):
         current_time = time.time()
-
-        if camera_id not in self.active_uids_per_camera:
-            self.active_uids_per_camera[camera_id] = set()
-
-        if track_key in self.track_history:
-            old_pid, last_seen = self.track_history[track_key]
-            time_since_lost = current_time - last_seen
-            
-            if time_since_lost < self.track_memory_duration:
-                self.track_to_persistent[track_key] = old_pid
-                
-                if feature is not None:
-                    self._add_feature_to_history(old_pid, feature)
-                    self.last_successful_feature[track_key] = (feature, current_time)
-                    self.feature_extraction_failures[track_key] = 0
-                    if bbox is not None:
-                        self._record_assignment(camera_id, old_pid, feature, bbox)
-                
-                self.last_seen[old_pid] = current_time
-                self.camera_locations[old_pid] = camera_id
-                
-                if bbox is not None:
-                    self.spatial_context[old_pid] = bbox
-                    self._update_motion_history(old_pid, bbox, current_time)
-                
-                if old_pid not in self.camera_history:
-                    self.camera_history[old_pid] = set()
-                self.camera_history[old_pid].add(camera_id)
-                
-                self.active_uids_per_camera[camera_id].add(old_pid)
-                
-                del self.track_history[track_key]
-                
-                print(f"[ReID] ✅ Resumed UID {old_pid} for track {track_id} "
-                      f"(was lost for {time_since_lost:.1f}s)")
-                return old_pid
-
-        if track_key in self.track_to_persistent:
-            pid = self.track_to_persistent[track_key]
-            
-            if feature is not None:
-                self._add_feature_to_history(pid, feature)
-                self.last_successful_feature[track_key] = (feature, current_time)
-                self.feature_extraction_failures[track_key] = 0
-                if bbox is not None:
-                    self._record_assignment(camera_id, pid, feature, bbox)
-            else:
-                self.feature_extraction_failures[track_key] = \
-                    self.feature_extraction_failures.get(track_key, 0) + 1
-            
-            self.last_seen[pid] = current_time
-            self.camera_locations[pid] = camera_id
-            
-            if bbox is not None:
-                self.spatial_context[pid] = bbox
-                self._update_motion_history(pid, bbox, current_time)
-            
-            if pid not in self.camera_history:
-                self.camera_history[pid] = set()
-            self.camera_history[pid].add(camera_id)
-            
-            if in_geo_fence and pid not in self.geo_fence_entry:
-                self.geo_fence_entry[pid] = current_time
-                print(f"[ReID] Person {pid} entered geo-fence in {camera_id}")
-            
-            self.active_uids_per_camera[camera_id].add(pid)
-            
-            return pid
-
-        if feature is None:
-            if track_key in self.last_successful_feature:
-                last_feat, last_time = self.last_successful_feature[track_key]
-                if current_time - last_time < 2.0:
-                    feature = last_feat
-            
-            self.feature_extraction_failures[track_key] = \
-                self.feature_extraction_failures.get(track_key, 0) + 1
-            
-            failure_count = self.feature_extraction_failures[track_key]
-            
-            if failure_count >= self.feature_failure_patience:
-                print(f"[ReID] ⚠️ Creating UID without feature after {failure_count} failures")
-            elif feature is None:
-                return None
-
-        if feature is not None:
-            match_id, confidence = self.find_best_match(camera_id, feature, bbox, track_id)
-            
-            if match_id:
-                is_cross_camera = (match_id in self.camera_locations and 
-                                  self.camera_locations[match_id] != camera_id)
-                
-                if is_cross_camera:
-                    pending_key = track_key
-                    
-                    if pending_key not in self.pending_cross_matches:
-                        self.pending_cross_matches[pending_key] = {
-                            'pid': match_id,
-                            'scores': [confidence],
-                            'features': [feature],
-                            'count': 1,
-                            'failures': 0,
-                            'first_seen': current_time
-                        }
-                        print(f"[ReID] 🔄 Pending cross-camera: Track {track_id} -> PID {match_id} "
-                              f"(1/{self.confirmation_frames}, score: {confidence:.3f})")
-                        return None
-                    else:
-                        pending = self.pending_cross_matches[pending_key]
-                        
-                        if pending['pid'] != match_id:
-                            if confidence > np.mean(pending['scores']):
-                                print(f"[ReID] 🔄 Cross-camera improved: {pending['pid']} -> {match_id}")
-                                pending['pid'] = match_id
-                                pending['scores'] = [confidence]
-                                pending['features'] = [feature]
-                                pending['count'] = 1
-                                pending['failures'] = 0
-                            else:
-                                print(f"[ReID] ⚠️ Cross-camera inconsistent, keeping {pending['pid']}")
-                            return None
-                        
-                        pending['scores'].append(confidence)
-                        pending['features'].append(feature)
-                        pending['count'] += 1
-                        pending['failures'] = 0
-                        
-                        print(f"[ReID] 🔄 Pending cross-camera: Track {track_id} -> PID {match_id} "
-                              f"({pending['count']}/{self.confirmation_frames}, avg: {np.mean(pending['scores']):.3f})")
-                        
-                        if pending['count'] >= self.confirmation_frames:
-                            avg_confidence = np.mean(pending['scores'])
-                            
-                            if avg_confidence >= self.cross_camera_threshold:
-                                self.track_to_persistent[track_key] = match_id
-                                self._add_feature_to_history(match_id, feature)
-                                self.last_seen[match_id] = current_time
-                                self.camera_locations[match_id] = camera_id
-                                
-                                if bbox is not None:
-                                    self.spatial_context[match_id] = bbox
-                                    self._update_motion_history(match_id, bbox, current_time)
-                                
-                                if match_id not in self.camera_history:
-                                    self.camera_history[match_id] = set()
-                                self.camera_history[match_id].add(camera_id)
-                                
-                                self._save_feature_to_db(match_id, camera_id, feature, avg_confidence)
-                                
-                                self.active_uids_per_camera[camera_id].add(match_id)
-                                self.uid_assignment_lock[match_id] = camera_id
-                                
-                                self.feature_extraction_failures[track_key] = 0
-                                self.last_successful_feature[track_key] = (feature, current_time)
-                                
-                                if bbox is not None:
-                                    self._record_assignment(camera_id, match_id, feature, bbox)
-                                
-                                del self.pending_cross_matches[pending_key]
-                                
-                                print(f"[ReID] ✅ CONFIRMED cross-camera: Track {track_id} -> PID {match_id} "
-                                      f"(avg: {avg_confidence:.3f})")
-                                return match_id
-                            else:
-                                print(f"[ReID] ❌ Cross-camera REJECTED (avg: {avg_confidence:.3f})")
-                                del self.pending_cross_matches[pending_key]
-                        else:
-                            return None
-                else:
-                    if confidence >= self.similarity_threshold:
-                        is_dup, reason = self._check_duplicate_assignment(
-                            camera_id, match_id, feature, bbox
-                        )
-                        
-                        if is_dup:
-                            print(f"[ReID] ❌ Match rejected (duplicate): {reason}")
-                            match_id = None
-                        else:
-                            self.track_to_persistent[track_key] = match_id
-                            self._add_feature_to_history(match_id, feature)
-                            self.last_seen[match_id] = current_time
-                            self.camera_locations[match_id] = camera_id
-                            
-                            if bbox is not None:
-                                self.spatial_context[match_id] = bbox
-                                self._update_motion_history(match_id, bbox, current_time)
-                            
-                            if match_id not in self.camera_history:
-                                self.camera_history[match_id] = set()
-                            self.camera_history[match_id].add(camera_id)
-                            
-                            self.active_uids_per_camera[camera_id].add(match_id)
-                            
-                            self.feature_extraction_failures[track_key] = 0
-                            self.last_successful_feature[track_key] = (feature, current_time)
-                            
-                            if bbox is not None:
-                                self._record_assignment(camera_id, match_id, feature, bbox)
-                            
-                            print(f"[ReID] ✅ Same-camera match: Track {track_id} -> PID {match_id} "
-                                  f"(confidence: {confidence:.3f})")
-                            return match_id
-
-        new_pid = self.next_persistent_id
-        self.next_persistent_id += 1
+        pids_to_remove = []
         
-        self.track_to_persistent[track_key] = new_pid
-        self.feature_history[new_pid] = [feature] if feature is not None else []
-        self.persistent_ids[new_pid] = feature
-        self.last_seen[new_pid] = current_time
-        self.first_seen[new_pid] = current_time
-        self.camera_locations[new_pid] = camera_id
-        self.camera_history[new_pid] = {camera_id}
+        for pid, last_time in self.last_seen.items():
+            if current_time - last_time > max_age:
+                pids_to_remove.append(pid)
         
-        if bbox is not None:
-            self.spatial_context[new_pid] = bbox
-            self._update_motion_history(new_pid, bbox, current_time)
-        
-        if in_geo_fence:
-            self.geo_fence_entry[new_pid] = current_time
-        
-        self.active_uids_per_camera[camera_id].add(new_pid)
-        self.uid_assignment_lock[new_pid] = camera_id
-        
-        self.feature_extraction_failures[track_key] = 0
-        if feature is not None:
-            self.last_successful_feature[track_key] = (feature, current_time)
-            if bbox is not None:
-                self._record_assignment(camera_id, new_pid, feature, bbox)
-        
-        if feature is not None:
-            self._save_feature_to_db(new_pid, camera_id, feature, 1.0)
-        
-        print(f"[ReID] 🆕 NEW UID: {new_pid} for track {track_id} in {camera_id}")
-        return new_pid
-
-    def cleanup_old_tracks(self, camera_id, active_track_ids, max_age=300):
-        camera_tracks = {k: v for k, v in self.track_to_persistent.items() 
-                        if k[0] == camera_id}
-        
-        active_keys = {(camera_id, tid) for tid in active_track_ids}
-        inactive_tracks = set(camera_tracks.keys()) - active_keys
-        
-        current_time = time.time()
-        
-        for track_key in inactive_tracks:
-            pid = self.track_to_persistent[track_key]
-            
-            self.track_history[track_key] = (pid, current_time)
-            print(f"[ReID] 💾 Stored track {track_key[1]} -> PID {pid} in memory "
-                  f"(will expire in {self.track_memory_duration}s)")
-            
-            if camera_id in self.active_uids_per_camera:
-                self.active_uids_per_camera[camera_id].discard(pid)
-            
-            del self.track_to_persistent[track_key]
-            
-            if track_key in self.pending_cross_matches:
-                del self.pending_cross_matches[track_key]
-            
-            self.feature_extraction_failures.pop(track_key, None)
-            self.last_successful_feature.pop(track_key, None)
-            self.recent_candidates.pop(track_key, None)
-
-        expired_history = [
-            k for k, (pid, last_seen) in self.track_history.items()
-            if current_time - last_seen > self.track_memory_duration
-        ]
-        
-        for track_key in expired_history:
-            pid, last_seen = self.track_history[track_key]
-            age = current_time - last_seen
-            del self.track_history[track_key]
-            print(f"[ReID] 🗑️ Expired track memory: {track_key} -> PID {pid} (age: {age:.1f}s)")
-
-        old_pids = [pid for pid, last_time in self.last_seen.items() 
-                   if current_time - last_time > max_age]
-        
-        for pid in old_pids:
-            for cam_id in self.active_uids_per_camera:
-                self.active_uids_per_camera[cam_id].discard(pid)
-            
-            self.persistent_ids.pop(pid, None)
+        for pid in pids_to_remove:
             self.feature_history.pop(pid, None)
+            self.persistent_ids.pop(pid, None)
             self.last_seen.pop(pid, None)
             self.camera_locations.pop(pid, None)
-            self.spatial_context.pop(pid, None)
             self.camera_history.pop(pid, None)
-            self.uid_assignment_lock.pop(pid, None)
+            self.spatial_context.pop(pid, None)
+            self.first_seen.pop(pid, None)
+            self.color_histograms.pop(pid, None)
+            self.color_confidence.pop(pid, None)
             self.position_history.pop(pid, None)
             self.velocity_estimates.pop(pid, None)
             
-            print(f"[ReID] 🗑️ Removed PID {pid} from memory (age: {max_age}s)")
-
-    def get_active_uids_in_camera(self, camera_id):
-        return self.active_uids_per_camera.get(camera_id, set())
+            print(f"[ReID] 🗑️ Cleaned up old track: PID {pid}")
+        
+        return len(pids_to_remove)
 
     def get_statistics(self):
-        total_active = sum(len(uids) for uids in self.active_uids_per_camera.values())
-        total_crossings = sum(len(crossings) for crossings in self.active_crossings.values())
-        
-        return {
-            'total_persistent_ids': len(self.persistent_ids),
-            'active_tracks': len(self.track_to_persistent),
-            'pending_cross_matches': len(self.pending_cross_matches),
-            'track_history_size': len(self.track_history),
-            'temporal_candidates': len(self.recent_candidates),
-            'recent_assignments': sum(len(v) for v in self.recent_assignments.values()),
+        stats = {
+            'total_persons': len(self.persistent_ids),
             'next_id': self.next_persistent_id,
-            'active_uids_total': total_active,
-            'active_per_camera': {cam: len(uids) for cam, uids in self.active_uids_per_camera.items()},
-            'db_enabled': self.db is not None,
-            'feature_failures': len(self.feature_extraction_failures),
-            'active_crossings': total_crossings,
-            'motion_tracked_pids': len(self.position_history),
-            'thresholds': {
-                'same_camera': self.similarity_threshold,
-                'cross_camera': self.cross_camera_threshold,
-                'spatial_proximity': self.spatial_proximity_threshold,
-                'track_memory': self.track_memory_duration,
-                'bbox_iou': self.bbox_iou_threshold,
-                'min_feature_distance': self.min_feature_distance,
-                'crossing_spatial': self.crossing_spatial_threshold,
-                'min_feature_separation': self.min_feature_separation
-            }
+            'active_cameras': len(self.active_uids_per_camera),
+            'active_crossings': sum(len(pairs) for pairs in self.active_crossings.values()),
+            'persons_with_color': len(self.color_histograms),
+            'avg_features_per_person': np.mean([len(f) for f in self.feature_history.values()]) 
+                                       if self.feature_history else 0,
+            'persons_with_motion': len(self.velocity_estimates)
         }
+        
+        return stats
 
-    def print_status(self):
-        stats = self.get_statistics()
+    def reset(self):
+        self.persistent_ids.clear()
+        self.feature_history.clear()
+        self.track_to_persistent.clear()
+        self.last_seen.clear()
+        self.camera_locations.clear()
+        self.camera_history.clear()
+        self.spatial_context.clear()
+        self.first_seen.clear()
+        self.track_history.clear()
+        self.recent_candidates.clear()
+        self.pending_cross_matches.clear()
+        self.active_uids_per_camera.clear()
+        self.uid_assignment_lock.clear()
+        self.feature_extraction_failures.clear()
+        self.last_successful_feature.clear()
+        self.recent_assignments.clear()
+        self.position_history.clear()
+        self.velocity_estimates.clear()
+        self.active_crossings.clear()
+        self.assignment_locks.clear()
+        self.last_assignments.clear()
+        self.color_histograms.clear()
+        self.color_confidence.clear()
         
-        print("\n" + "="*60)
-        print("📊 ENHANCED PERSISTENT PERSON TRACKER STATUS")
-        print("="*60)
-        print(f"Total Persons: {stats['total_persistent_ids']}")
-        print(f"Active Tracks: {stats['active_tracks']}")
-        print(f"Pending Cross-Camera: {stats['pending_cross_matches']}")
-        print(f"Track History: {stats['track_history_size']} (memory: {self.track_memory_duration}s)")
-        print(f"Temporal Candidates: {stats['temporal_candidates']}")
-        print(f"Recent Assignments: {stats['recent_assignments']}")
-        print(f"Active Crossings: {stats['active_crossings']}")
-        print(f"Motion Tracked PIDs: {stats['motion_tracked_pids']}")
-        print(f"Next UID: {stats['next_id']}")
-        print(f"Feature Failures: {stats['feature_failures']}")
-        print(f"\n🎯 Thresholds:")
-        print(f"  Same Camera: {stats['thresholds']['same_camera']:.2f}")
-        print(f"  Cross Camera: {stats['thresholds']['cross_camera']:.2f}")
-        print(f"  Spatial Proximity: {stats['thresholds']['spatial_proximity']}px")
-        print(f"  Track Memory: {stats['thresholds']['track_memory']:.1f}s")
-        print(f"  BBox IoU: {stats['thresholds']['bbox_iou']:.2f}")
-        print(f"  Min Feature Distance: {stats['thresholds']['min_feature_distance']:.2f}")
-        print(f"  Crossing Spatial: {stats['thresholds']['crossing_spatial']}px")
-        print(f"  Min Feature Separation: {stats['thresholds']['min_feature_separation']:.2f}")
-        print(f"\n📹 Active UIDs per Camera:")
-        for cam_id, uids in stats['active_per_camera'].items():
-            print(f"  {cam_id}: {uids} UIDs")
-        print("="*60 + "\n")
-
-    def print_crossing_status(self):
-        if not any(self.active_crossings.values()):
-            return
-        
-        print("\n" + "="*60)
-        print("⚠️  ACTIVE CROSSINGS")
-        print("="*60)
-        
-        for camera_id, crossings in self.active_crossings.items():
-            if crossings:
-                print(f"\n📹 {camera_id}:")
-                for pair, info in crossings.items():
-                    duration = time.time() - info['start_time']
-                    print(f"  PID {pair[0]} ↔ PID {pair[1]} "
-                          f"(duration: {duration:.1f}s, locked: {info['locked']})")
-        
-        print("="*60 + "\n")
+        print("[ReID] ♻️ Tracker reset complete")

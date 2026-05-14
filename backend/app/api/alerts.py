@@ -1,8 +1,4 @@
 # app/api/alerts.py
-"""
-Fixed Alert System with proper endpoints
-Handles both YOLO detections and behavior alerts
-"""
 
 from flask import Blueprint, jsonify, request
 from datetime import datetime
@@ -10,21 +6,19 @@ from enum import Enum
 import json
 from collections import deque
 
-# ============= CREATE BLUEPRINT =============
 alerts_bp = Blueprint("alerts", __name__)
 
-# ============= IN-MEMORY STORAGE =============
-# Store alerts in memory (simple queue with max size)
-alert_storage = deque(maxlen=1000)  # Keep last 1000 alerts
-alert_id_counter = [0]  # Use list to make it mutable
-
-# ============= ENUMS =============
+alert_storage = deque(maxlen=1000)
+alert_id_counter = [0]
 
 class AlertType(Enum):
     LOITERING = "loitering"
     RUNNING = "running"
-    SUSPICIOUS = "suspicious"
+    VIOLENCE = "violence"
+    FALLEN = "fallen"
     CROWD = "crowd"
+    FIRE = "fire"
+    SMOKE = "smoke"
     GENERAL = "general"
     DETECTION = "detection"
 
@@ -32,11 +26,9 @@ class AlertSeverity(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
-
-# ============= HELPER FUNCTIONS =============
+    CRITICAL = "critical"
 
 def safe_json(obj):
-    """Convert object to JSON-safe format"""
     if isinstance(obj, dict):
         return {k: safe_json(v) for k, v in obj.items()}
     elif isinstance(obj, (list, tuple)):
@@ -46,7 +38,6 @@ def safe_json(obj):
     return obj
 
 def create_alert(alert_type, severity, location, description, metadata=None):
-    """Create and store an alert"""
     alert_id_counter[0] += 1
     
     alert = {
@@ -62,38 +53,18 @@ def create_alert(alert_type, severity, location, description, metadata=None):
     
     alert_storage.append(alert)
     
-    # Print alert to console for debugging
     severity_emoji = {
         'low': '🟢',
         'medium': '🟡',
-        'high': '🔴'
+        'high': '🔴',
+        'critical': '🚨'
     }
     print(f"{severity_emoji.get(severity, '⚪')} [ALERT] {alert_type.upper()} - {description}")
     
     return alert
 
-# ============= API ROUTES =============
-
 @alerts_bp.route("/yolo-detection", methods=["POST"])
 def yolo_detection():
-    """
-    Handle YOLO detection data
-    
-    Expected JSON format:
-    {
-        "camera_id": "camera_1",
-        "detections": [
-            {
-                "class": "person",
-                "confidence": 0.95,
-                "bbox": [x, y, width, height],
-                "track_id": 1
-            }
-        ],
-        "frame_id": 123,
-        "timestamp": "2025-10-26T13:10:48"
-    }
-    """
     try:
         data = request.get_json()
         
@@ -112,7 +83,6 @@ def yolo_detection():
         
         alerts_created = []
         
-        # Create alert for high person count
         if person_count >= 10:
             alert = create_alert(
                 alert_type='crowd',
@@ -148,23 +118,6 @@ def yolo_detection():
 
 @alerts_bp.route("/create", methods=["POST"])
 def create_alert_endpoint():
-    """
-    Create a behavior alert
-    
-    Expected JSON format:
-    {
-        "alert_type": "behavior",
-        "type": "loitering",
-        "severity": "medium",
-        "location": "camera_1",
-        "description": "Person loitering detected",
-        "metadata": {
-            "person_id": 123,
-            "duration": 45.5,
-            "confidence": 0.85
-        }
-    }
-    """
     try:
         data = request.get_json()
         
@@ -179,6 +132,20 @@ def create_alert_endpoint():
         location = data.get('location', 'unknown')
         description = data.get('description', 'Alert detected')
         metadata = data.get('metadata', {})
+        
+        valid_types = [t.value for t in AlertType]
+        if alert_type not in valid_types:
+            return jsonify({
+                "success": False,
+                "error": f"Invalid alert type. Must be one of: {valid_types}"
+            }), 400
+        
+        valid_severities = [s.value for s in AlertSeverity]
+        if severity not in valid_severities:
+            return jsonify({
+                "success": False,
+                "error": f"Invalid severity. Must be one of: {valid_severities}"
+            }), 400
         
         alert = create_alert(
             alert_type=alert_type,
@@ -204,33 +171,20 @@ def create_alert_endpoint():
 
 @alerts_bp.route("/list", methods=["GET"])
 def list_alerts():
-    """
-    Get all alerts
-    
-    Query parameters:
-    - limit: Maximum number of alerts to return (default: 100)
-    - type: Filter by alert type
-    - severity: Filter by severity
-    """
     try:
         limit = int(request.args.get('limit', 100))
         alert_type_filter = request.args.get('type')
         severity_filter = request.args.get('severity')
         
-        # Convert deque to list for filtering
         alerts = list(alert_storage)
         
-        # Apply filters
         if alert_type_filter:
             alerts = [a for a in alerts if a['type'] == alert_type_filter]
         
         if severity_filter:
             alerts = [a for a in alerts if a['severity'] == severity_filter]
         
-        # Sort by timestamp (newest first)
         alerts.sort(key=lambda x: x['timestamp'], reverse=True)
-        
-        # Apply limit
         alerts = alerts[:limit]
         
         return jsonify({
@@ -249,7 +203,6 @@ def list_alerts():
 
 @alerts_bp.route("/clear", methods=["POST"])
 def clear_alerts():
-    """Clear all alerts"""
     try:
         alert_storage.clear()
         alert_id_counter[0] = 0
@@ -269,7 +222,6 @@ def clear_alerts():
 
 @alerts_bp.route("/stats", methods=["GET"])
 def alert_stats():
-    """Get alert statistics"""
     try:
         alerts = list(alert_storage)
         
@@ -280,21 +232,18 @@ def alert_stats():
             'recent_count': 0
         }
         
-        # Count by type
         for alert in alerts:
             alert_type = alert['type']
             stats['by_type'][alert_type] = stats['by_type'].get(alert_type, 0) + 1
         
-        # Count by severity
         for alert in alerts:
             severity = alert['severity']
             stats['by_severity'][severity] = stats['by_severity'].get(severity, 0) + 1
         
-        # Count recent (last 5 minutes)
         now = datetime.now()
         for alert in alerts:
             alert_time = datetime.fromisoformat(alert['timestamp'])
-            if (now - alert_time).total_seconds() < 300:  # 5 minutes
+            if (now - alert_time).total_seconds() < 300:
                 stats['recent_count'] += 1
         
         return jsonify({
@@ -312,14 +261,14 @@ def alert_stats():
 
 @alerts_bp.route("/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
     return jsonify({
         "success": True,
         "status": "healthy",
         "alert_count": len(alert_storage),
+        "supported_types": [t.value for t in AlertType],
+        "supported_severities": [s.value for s in AlertSeverity],
         "timestamp": datetime.now().isoformat()
     }), 200
 
 
-# ============= EXPORTS =============
-__all__ = ['alerts_bp']
+__all__ = ['alerts_bp', 'AlertType', 'AlertSeverity', 'create_alert']

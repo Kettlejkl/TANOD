@@ -13,17 +13,19 @@ def create_app():
     # Import blueprints
     from app.api.analytics import analytics_bp, start_scheduler_thread
     from app.api.video import video_bp
-    from app.api.auth.routes import auth_bp  # ✅ NEW: Import auth blueprint
+    from app.api.auth.routes import auth_bp
+    from app.api.alerts import alerts_bp  # ✅ ADD THIS LINE
 
     # Register Blueprints
     app.register_blueprint(analytics_bp, url_prefix="/api/analytics")
     app.register_blueprint(video_bp, url_prefix="/api/video")
-    app.register_blueprint(auth_bp)  # ✅ NEW: Register auth blueprint (already has /api/auth prefix)
+    app.register_blueprint(auth_bp)  # already has /api/auth prefix
+    app.register_blueprint(alerts_bp, url_prefix="/api/alerts")  # ✅ REGISTER ALERTS
 
-    # Initialize SocketIO with the app
+    # Initialize SocketIO
     socketio.init_app(app)
     
-    # ✅ Initialize cameras AFTER socketio is ready
+    # Initialize cameras AFTER socketio is ready
     from app.api.video.routes import initialize_cameras
     initialize_cameras()
 

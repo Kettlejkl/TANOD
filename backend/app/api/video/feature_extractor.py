@@ -33,11 +33,7 @@ feature_extractor = SimpleFeatureExtractor()
 print(f"[INFO] Feature extractor loaded on GPU: {torch.cuda.get_device_name(0)} ✅")
 
 def extract_feature(frame, box):
-    """Extract ReID features from a bounding box
-    frame: BGR image (numpy)
-    box: (x, y, w, h)
-    returns: torch tensor feature or None (if crop invalid)
-    """
+
     x, y, w, h = box
     x, y, w, h = max(0, int(x)), max(0, int(y)), int(w), int(h)
     

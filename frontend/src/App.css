@@ -1,9 +1,5 @@
-#root {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
+/* Removed #root styles that were conflicting with Dashboard full-width layout */
+/* If you need these styles for other pages, add them with specific class names instead */
 
 .logo {
   height: 6em;
@@ -11,9 +7,11 @@
   will-change: filter;
   transition: filter 300ms;
 }
+
 .logo:hover {
   filter: drop-shadow(0 0 2em #646cffaa);
 }
+
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafbaa);
 }

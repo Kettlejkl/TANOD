@@ -1,0 +1,8 @@
+persistent_id,cameras,behavior_types,max_severity,avg_confidence,first_behavior,last_behavior,total_behaviors,crowd_formation_count,loitering_count
+7,CAM002,"crowd_formation,loitering",medium,0.67,2026-05-14T09:58:08.456051,2026-05-14T10:22:52.179460,12,11,1
+1,CAM002,"crowd_formation,loitering",medium,0.654,2026-05-14T09:51:11.512212,2026-05-14T10:14:43.843793,7,6,1
+6,CAM002,"crowd_formation,loitering",medium,0.608,2026-05-14T09:48:52.379841,2026-05-14T10:19:29.144244,6,4,2
+5,CAM002,"crowd_formation,loitering",medium,0.668,2026-05-14T09:47:42.727914,2026-05-14T10:15:48.985155,5,4,1
+2,CAM002,"crowd_formation,loitering",medium,0.554,2026-05-14T09:42:10.774401,2026-05-14T10:09:44.415851,5,4,1
+4,CAM002,"crowd_formation,loitering",medium,0.608,2026-05-14T09:46:40.976448,2026-05-14T10:16:56.589253,4,3,1
+3,CAM002,"crowd_formation,loitering",medium,0.667,2026-05-14T09:54:13.833340,2026-05-14T10:10:01.102129,3,2,1

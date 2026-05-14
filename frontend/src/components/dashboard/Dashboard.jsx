@@ -58,6 +58,33 @@ const Dashboard = () => {
         apiService.getSystemHealth()
       ]);
 
+      // 🔍 COMPREHENSIVE DEBUG LOGGING
+      console.log('═══════════════════════════════════════════════════════');
+      console.log('📊 DASHBOARD DATA COMPLETE DUMP');
+      console.log('═══════════════════════════════════════════════════════');
+      
+      console.log('🎯 INCIDENTS DATA:');
+      console.log('  Raw:', JSON.stringify(incidentsData, null, 2));
+      console.log('  Count:', incidentsData?.length || 0);
+      
+      console.log('\n🎯 OCCUPANCY DATA:');
+      console.log('  Raw:', JSON.stringify(occupancyData, null, 2));
+      console.log('  Keys:', Object.keys(occupancyData || {}));
+      
+      console.log('\n🎯 ANALYTICS DATA:');
+      console.log('  Raw:', JSON.stringify(analyticsData, null, 2));
+      
+      console.log('\n🎯 SYSTEM HEALTH DATA:');
+      console.log('  Raw:', JSON.stringify(healthData, null, 2));
+      console.log('  activeUIDs:', healthData?.activeUIDs);
+      console.log('  active_uids:', healthData?.active_uids);
+      
+      console.log('\n🎯 ANOMALIES DATA:');
+      console.log('  Raw:', JSON.stringify(anomaliesData, null, 2));
+      console.log('  Count:', anomaliesData?.length || 0);
+      
+      console.log('═══════════════════════════════════════════════════════\n');
+
       setIncidents(incidentsData);
       setOccupancy(occupancyData);
       setAnalytics(analyticsData);
@@ -66,7 +93,7 @@ const Dashboard = () => {
       setSystemHealth(healthData);
       setLastUpdate(new Date());
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('❌ Error fetching data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -128,6 +155,16 @@ const Dashboard = () => {
     return sum + (data?.current || 0);
   }, 0);
   
+  // 🔧 TEMPORARY: Just use systemHealth.activeUIDs for now
+  // We'll fix this once we see the actual data structure
+  const totalUIDs = systemHealth.activeUIDs || systemHealth.active_uids || 0;
+  
+  // 🔍 DEBUG: Log what we're using for UID count
+  console.log('🎯 UID COUNT CALCULATION:');
+  console.log('  systemHealth.activeUIDs:', systemHealth.activeUIDs);
+  console.log('  systemHealth.active_uids:', systemHealth.active_uids);
+  console.log('  FINAL totalUIDs:', totalUIDs);
+  
   const activeIncidents = incidents.filter(i => i.status !== 'resolved');
   const alertCameraIds = activeIncidents.map(i => i.camera_id);
 
@@ -179,7 +216,7 @@ const Dashboard = () => {
                 <div className="text-orange-300 text-xs">Response</div>
               </div>
               <div className="bg-purple-500/20 border border-purple-400/30 rounded-lg px-4 py-2 text-center min-w-[80px]">
-                <div className="text-purple-400 text-lg font-bold">{systemHealth.activeUIDs || 0}</div>
+                <div className="text-purple-400 text-lg font-bold">{totalUIDs}</div>
                 <div className="text-purple-300 text-xs">UIDs</div>
               </div>
             </div>

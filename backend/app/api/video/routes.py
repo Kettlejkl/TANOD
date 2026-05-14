@@ -642,16 +642,28 @@ def on_update_geo_fences(data):
 def initialize_cameras():
     """Initialize cameras after socketio is ready"""
     try:
-        print("[Video Routes] Initializing cameras...")
-        stream_manager.add_camera("CAM001", 0)  # Match frontend
-        stream_manager.add_camera("CAM002", 1)  # Match frontend
+        print("[Video Routes] Initializing cameras with LOCAL VIDEO FILES...")
         
-        # Start first camera
-        success = stream_manager.start_stream("CAM001")
-        if success:
-            print("[Video Routes] ✅ CAM001 started successfully")
+        # ❌ COMMENTED OUT: Original webcam sources
+        # stream_manager.add_camera("CAM001", 0)
+        # stream_manager.add_camera("CAM002", 1)
+        
+        # ✅ NEW: Use local MP4 files instead
+        stream_manager.add_camera("CAM001", "E:/TANOD/tanodapp/Westbound2.mp4")
+        stream_manager.add_camera("CAM002", "E:/TANOD/tanodapp/Eastbound2.mp4")
+        
+        # Start BOTH video files
+        success1 = stream_manager.start_stream("CAM001")
+        if success1:
+            print("[Video Routes] ✅ CAM001 (Westbound2.mp4) started successfully")
         else:
             print("[Video Routes] ❌ Failed to start CAM001")
+        
+        success2 = stream_manager.start_stream("CAM002")
+        if success2:
+            print("[Video Routes] ✅ CAM002 (Eastbound2.mp4) started successfully")
+        else:
+            print("[Video Routes] ❌ Failed to start CAM002")
             
         print(f"[Video Routes] Cameras configured:")
         print(f"  - CAM001: source={stream_manager.cameras.get('CAM001', {}).get('source')}, active={stream_manager.cameras.get('CAM001', {}).get('active')}")

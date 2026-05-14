@@ -1,0 +1,6 @@
+persistent_id,cameras,behavior_types,max_severity,avg_confidence,first_behavior,last_behavior,total_behaviors,loitering_count
+7,CAM002,loitering,medium,0.565,2025-11-18T13:11:02.831681,2025-11-18T13:44:59.794145,2,2
+1,CAM002,loitering,medium,0.55,2025-11-18T13:09:34.347696,2025-11-18T13:09:34.347696,1,1
+2,CAM002,loitering,medium,0.61,2025-11-18T13:42:34.290438,2025-11-18T13:42:34.290438,1,1
+3,CAM002,loitering,medium,0.96,2025-11-18T13:03:27.627819,2025-11-18T13:03:27.627819,1,1
+8,CAM002,loitering,medium,0.51,2025-11-18T13:04:50.950575,2025-11-18T13:04:50.950575,1,1

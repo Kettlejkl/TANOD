@@ -1,0 +1,6 @@
+persistent_id,cameras,behavior_types,max_severity,avg_confidence,first_behavior,last_behavior,total_behaviors,crowd_formation_count,loitering_count
+4,CAM001,"crowd_formation,loitering",medium,0.682,2026-05-07T18:50:57.335665,2026-05-07T18:58:45.460494,4,3,1
+1,CAM001,"crowd_formation,loitering",medium,0.655,2026-05-07T18:52:03.491119,2026-05-07T18:59:30.706529,2,1,1
+2,CAM001,crowd_formation,medium,0.665,2026-05-07T18:53:45.514757,2026-05-07T18:54:17.307913,2,2,0
+5,CAM001,crowd_formation,medium,0.75,2026-05-07T18:56:41.720245,2026-05-07T18:59:30.846601,2,2,0
+3,CAM001,crowd_formation,medium,0.67,2026-05-07T18:58:02.963963,2026-05-07T18:58:02.963963,1,1,0
