@@ -1,0 +1,5 @@
+journey_id,persistent_id,first_seen,last_seen,total_duration_seconds,total_behaviors,time_in_fence_seconds,time_outside_fence_seconds,is_active,cameras_visited,behavior_types
+48,13,2026-01-28 18:46:50.984724,2026-01-28 18:58:59.123463,728,1,195,0,True,"CAM001,CAM002",loitering
+46,14,2026-01-28 18:46:50.990777,2026-01-28 18:55:53.050130,542,1,141,0,False,"CAM001,CAM002",loitering
+45,17,2026-01-28 18:47:01.398234,2026-01-28 18:55:07.664417,486,1,85,0,True,CAM001,loitering
+47,18,2026-01-28 18:47:26.274714,2026-01-28 18:57:21.941748,595,2,183,0,True,"CAM001,CAM002",loitering

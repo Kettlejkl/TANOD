@@ -1,0 +1,23 @@
+behavior_id,persistent_id,camera_id,behavior_type,severity,confidence,description,timestamp
+60,16,CAM001,loitering,medium,0.53,loitering detected,2026-01-28 19:23:44.626500
+59,11,CAM001,loitering,medium,0.91,loitering detected,2026-01-28 19:23:44.604517
+58,14,CAM001,loitering,medium,0.91,loitering detected,2026-01-28 19:23:44.582495
+57,15,CAM002,loitering,medium,0.66,loitering detected,2026-01-28 19:17:32.825934
+56,13,CAM001,loitering,medium,0.7,loitering detected,2026-01-28 19:17:01.893729
+55,12,CAM001,loitering,medium,0.87,loitering detected,2026-01-28 19:15:46.986044
+54,11,CAM002,loitering,medium,0.72,loitering detected,2026-01-28 19:10:51.540480
+53,12,CAM002,loitering,medium,0.77,loitering detected,2026-01-28 19:09:18.978636
+52,13,CAM002,loitering,medium,0.71,loitering detected,2026-01-28 18:58:59.135467
+51,18,CAM002,loitering,medium,0.62,loitering detected,2026-01-28 18:57:21.956765
+50,18,CAM001,loitering,medium,0.78,loitering detected,2026-01-28 18:56:44.251197
+49,14,CAM002,loitering,medium,0.76,loitering detected,2026-01-28 18:55:53.068167
+48,17,CAM001,loitering,medium,0.56,loitering detected,2026-01-28 18:55:07.683388
+47,7,CAM002,loitering,medium,0.89,loitering detected,2026-01-28 10:41:56.852812
+46,10,CAM001,loitering,medium,0.6,loitering detected,2026-01-28 10:41:15.634344
+45,2,CAM001,loitering,medium,0.92,loitering detected,2026-01-28 10:39:55.522189
+44,8,CAM002,loitering,medium,0.65,loitering detected,2026-01-28 10:39:03.363836
+43,7,CAM001,loitering,medium,0.82,loitering detected,2026-01-28 10:29:27.414140
+42,5,CAM002,loitering,medium,0.73,loitering detected,2026-01-28 10:28:11.465843
+41,5,CAM001,loitering,medium,0.79,loitering detected,2026-01-28 10:27:11.774136
+40,2,CAM002,loitering,medium,0.88,loitering detected,2026-01-28 10:24:31.715623
+39,1,CAM002,loitering,medium,0.51,loitering detected,2026-01-28 10:13:03.549610

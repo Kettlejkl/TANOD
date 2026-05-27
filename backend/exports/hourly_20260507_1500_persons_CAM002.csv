@@ -1,0 +1,3 @@
+persistent_id,cameras_visited,track_id,avg_confidence,percent_time_in_fence,fence_ids_visited,fence_names_visited,total_detections,first_seen,last_seen,duration_seconds
+3,CAM002,31,1.757,100.0,08e11ce2-e252-44a5-b6cf-b5f395587eb2,Westbound,15,2026-05-07T14:36:30.289092,2026-05-07T14:37:40.938910,70.649818
+2,CAM002,42,1.492,100.0,08e11ce2-e252-44a5-b6cf-b5f395587eb2,Westbound,1,2026-05-07T14:37:30.090892,2026-05-07T14:37:30.090892,0.0

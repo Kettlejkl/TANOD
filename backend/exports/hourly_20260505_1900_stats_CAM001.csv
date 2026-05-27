@@ -1,0 +1,2 @@
+id,camera_id,hour,total_detections,unique_persons,avg_persons_per_frame,peak_persons,loitering_events,running_events,suspicious_events,crowd_events,persons_in_fence,persons_outside_fence,created_at,updated_at
+17,CAM001,2026-05-05 19:00:00,0,0,0.0,0,0,0,0,0,0,0,2026-05-05T19:46:25.037835,2026-05-05T19:55:11.453178

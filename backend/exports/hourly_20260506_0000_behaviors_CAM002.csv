@@ -1,0 +1,2 @@
+persistent_id,cameras,behavior_types,max_severity,avg_confidence,first_behavior,last_behavior,total_behaviors,sprinting_count
+1,CAM002,sprinting,medium,0.62,2026-05-06T00:56:18.186237,2026-05-06T00:56:18.186237,1,1

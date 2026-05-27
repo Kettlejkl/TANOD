@@ -1,0 +1,10 @@
+behavior_id,persistent_id,camera_id,behavior_type,severity,confidence,description,timestamp
+47,7,CAM002,loitering,medium,0.89,loitering detected,2026-01-28 10:41:56.852812
+46,10,CAM001,loitering,medium,0.6,loitering detected,2026-01-28 10:41:15.634344
+45,2,CAM001,loitering,medium,0.92,loitering detected,2026-01-28 10:39:55.522189
+44,8,CAM002,loitering,medium,0.65,loitering detected,2026-01-28 10:39:03.363836
+43,7,CAM001,loitering,medium,0.82,loitering detected,2026-01-28 10:29:27.414140
+42,5,CAM002,loitering,medium,0.73,loitering detected,2026-01-28 10:28:11.465843
+41,5,CAM001,loitering,medium,0.79,loitering detected,2026-01-28 10:27:11.774136
+40,2,CAM002,loitering,medium,0.88,loitering detected,2026-01-28 10:24:31.715623
+39,1,CAM002,loitering,medium,0.51,loitering detected,2026-01-28 10:13:03.549610
